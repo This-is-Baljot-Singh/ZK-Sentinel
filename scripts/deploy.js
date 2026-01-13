@@ -6,7 +6,7 @@ async function main() {
   // 1. Deploy the Auto-Generated Verifier first
   // CRITICAL: Check your contracts/Verifier.sol file. 
   // If the contract name inside is "Verifier" instead of "Groth16Verifier", change the line below!
-  const Verifier = await hre.ethers.getContractFactory("Groth16Verifier"); 
+  const Verifier = await hre.ethers.getContractFactory("Groth16Verifier");
   const verifier = await Verifier.deploy();
   await verifier.waitForDeployment();
   const verifierAddress = await verifier.getAddress();

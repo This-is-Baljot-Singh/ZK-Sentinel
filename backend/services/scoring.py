@@ -1,51 +1,68 @@
+import os
 import json
-import random
+from google import genai
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 def calculate_trust_score(data_content: str) -> dict:
     """
-    Simulates an AI Analysis of financial data.
-    In production, this would send 'data_content' to Llama 3 via Groq/OpenAI.
+    Sends financial data to Gemini 2.0 via the google-genai SDK.
+    Returns a structured dictionary with score and reasoning.
     """
-    
-    # 1. Parse the incoming data (assuming JSON for now)
     try:
-        data = json.loads(data_content)
-    except json.JSONDecodeError:
-        # Fallback if CSV or raw text
+        # 1. Initialize the Client
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+        prompt = f"""
+        You are an advanced AI Financial Underwriter for ZK-Sentinel. 
+        Analyze the following raw financial data and assign a Credit Score between 300 (High Risk) and 850 (Excellent).
+        
+        Rules:
+        1. Analyze income stability, repayment history, and spending behavior.
+        2. High Income (>50k) and timely repayments -> Higher Score (>700).
+        3. Payment failures or erratic cash flow -> Lower Score (<600).
+        
+        Data to Analyze:
+        {data_content}
+        """
+
+        # 2. Generate Content
+        # We use 'response_mime_type' to force valid JSON output natively
+        response = client.models.generate_content(
+            model='gemini-flash-latest', 
+            contents=prompt,
+            config={
+                'response_mime_type': 'application/json',
+                'response_schema': {
+                    "type": "OBJECT",
+                    "properties": {
+                        "score": {"type": "INTEGER"},
+                        "risk_level": {"type": "STRING", "enum": ["Low", "Medium", "High"]},
+                        "reasoning": {"type": "STRING"}
+                    },
+                    "required": ["score", "risk_level", "reasoning"]
+                }
+            }
+        )
+        
+        # 3. Validation & Parsing
+        # Check if text exists before stripping
+        if not response.text:
+            print("Block Reason:", response.candidates[0].finish_reason if response.candidates else "Unknown")
+            raise ValueError("Model returned an empty response (likely triggered safety filters).")
+
+        # Since we used JSON mode, we don't need to strip ```json markdown
+        analysis_result = json.loads(response.text)
+        
+        return analysis_result
+
+    except Exception as e:
+        print(f"AI Error: {e}")
         return {
-            "score": 600, 
-            "status": "error", 
-            "reason": "Invalid JSON format. Using baseline score."
+            "score": 600,
+            "status": "error",
+            "risk_level": "Unknown",
+            "reasoning": "AI Service Unavailable. Returning baseline score."
         }
-
-    # 2. Extract "Red Flags" or "Green Flags" (Simple heuristic logic for MVP)
-    # This simulates what Llama 3 would look for.
-    monthly_income = data.get("average_monthly_income", 0)
-    upi_failures = data.get("upi_payment_failures", 0)
-    loan_repayments = data.get("loan_repayments_on_time", False)
-
-    base_score = 500
-
-    # Logic: More income = higher score
-    if monthly_income > 50000:
-        base_score += 150
-    elif monthly_income > 20000:
-        base_score += 50
-
-    # Logic: Failures = lower score
-    if upi_failures > 5:
-        base_score -= 50
-
-    # Logic: Good history = higher score
-    if loan_repayments:
-        base_score += 100
-
-    # Cap score between 300 and 850
-    final_score = max(300, min(850, base_score))
-
-    # 3. Return the structured analysis
-    return {
-        "score": final_score,
-        "risk_level": "Low" if final_score > 700 else "Medium" if final_score > 600 else "High",
-        "reasoning": f"Analyzed income of {monthly_income} and payment history."
-    }

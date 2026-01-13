@@ -1,24 +1,21 @@
-# Use an official lightweight Python image
-FROM python:3.9-slim
+FROM python:3.11-slim 
 
-# Set working directory
 WORKDIR /app
 
-# 1. Install Node.js and NPM (Required for SnarkJS)
-RUN apt-get update && apt-get install -y nodejs npm
+# Install Node.js & SnarkJS
+RUN apt-get update && apt-get install -y nodejs npm curl \
+    && npm install -g snarkjs \
+    && apt-get clean
 
-# 2. Install SnarkJS globally
-RUN npm install -g snarkjs
+# Copy Circuits
+COPY circuits /app/circuits
 
-# 3. Copy requirements and install Python dependencies
-COPY requirements.txt .
+# Setup Backend
+WORKDIR /app/backend
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. Copy the rest of the backend code
-COPY . .
+COPY backend .
 
-# Expose port
 EXPOSE 8000
-
-# Command to run the app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

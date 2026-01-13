@@ -1,12 +1,21 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+import sys
+import os
+
+# --- PATH FIX ---
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+# ----------------
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
+
 from services.scoring import calculate_trust_score
-from pydantic import BaseModel
+# Import the new async prover
 from services.prover import generate_zk_proof
 
-app = FastAPI(title="ZK-Sentinel API", version="0.1.0")
+app = FastAPI(title="ZK-Sentinel API", version="0.3.0")
 
-# CORS Setup (Allow Frontend to connect)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,45 +26,62 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"status": "active", "service": "ZK-Sentinel Backend"}
+    return {"status": "active", "service": "ZK-Sentinel Backend v3 (Async+Binding)"}
 
-@app.post("/analyze")
-async def analyze_financial_data(file: UploadFile = File(...)):
+@app.post("/verify-identity")
+async def verify_identity(
+    file: UploadFile = File(...),
+    wallet_address: str = Form(...),  # NEW: Required for Identity Binding
+    threshold: int = Form(700) 
+):
     """
-    Takes an uploaded JSON/CSV file, reads it, and generates a Credit Score.
+    FULL FLOW: 
+    1. Upload File & Wallet Address
+    2. AI Analysis (Calculate Score)
+    3. Generate ZK Proof (Score + Address Binding)
+    4. Return Proof
     """
     try:
-        # 1. Read the file content
-        content = await file.read()
+        # 1. Read File
+        content_bytes = await file.read()
+        content_str = content_bytes.decode("utf-8")
         
-        # 2. Decode bytes to string
-        text_content = content.decode("utf-8")
+        # Security: Prevent DoS with massive files
+        if len(content_str) > 500_000: # 500KB limit
+             raise HTTPException(status_code=413, detail="File too large.")
+
+        # 2. AI Analysis
+        # Note: calculate_trust_score is synchronous. In a super-high scale app, 
+        # you'd run this in a threadpool too, but for hackathon, this is fine.
+        analysis_result = calculate_trust_score(content_str)
         
-        # 3. Run the "AI" Analysis
-        result = calculate_trust_score(text_content)
+        if analysis_result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=analysis_result.get("reason"))
+
+        user_score = analysis_result["score"]
         
+        # 3. ZK Proof Generation (Async)
+        # We pass the wallet_address to bind the proof to this specific user.
+        zk_result = await generate_zk_proof(user_score, content_str, wallet_address, threshold)
+        
+        if zk_result["status"] == "error":
+            return {
+                "status": "failure",
+                "analysis": analysis_result,
+                "zk_error": zk_result["message"],
+                "debug_details": zk_result.get("details")
+            }
+
+        # 4. Success Response
         return {
             "status": "success",
-            "filename": file.filename,
-            "data": result
+            "analysis": analysis_result,
+            "proof_data": {
+                "proof": zk_result["proof"],
+                "public_signals": zk_result["public_signals"]
+            }
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-class ProofRequest(BaseModel):
-    credit_score: int
-    threshold: int = 700
-
-@app.post("/prove")
-def create_proof(request: ProofRequest):
-    """
-    Generates a ZK-SNARK proof that credit_score >= threshold.
-    """
-    result = generate_zk_proof(request.credit_score, request.threshold)
-    
-    if result["status"] == "error":
-         # If proof fails (e.g. score too low), return 400 Bad Request
-        raise HTTPException(status_code=400, detail=result)
-        
-    return result
+        print(f"Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"System Error: {str(e)}")
