@@ -4,13 +4,20 @@ import { useEffect, useState } from "react";
 import "@rainbow-me/rainbowkit/styles.css";
 import { getDefaultConfig, RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { WagmiProvider } from "wagmi";
-import { sepolia } from "wagmi/chains";
+import { sepolia, hardhat } from "wagmi/chains"; // Import hardhat
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// Define the chains based on environment
+const chains = [
+  hardhat, // Development
+  sepolia  // Production
+];
 
 const config = getDefaultConfig({
   appName: "ZK-Sentinel",
-  projectId: "zk-sentinel-demo",
-  chains: [sepolia],
+  projectId: "zk-sentinel-demo", // Get a real one from WalletConnect for production
+  chains: chains,
+  ssr: true, // Server-side rendering support
 });
 
 const queryClient = new QueryClient();

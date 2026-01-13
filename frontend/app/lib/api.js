@@ -1,18 +1,28 @@
-export async function analyzeFinancialData(fileText) {
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+export async function verifyIdentity(file, walletAddress) {
   try {
-    const res = await fetch("http://127.0.0.1:8000/analyze", {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("wallet_address", walletAddress);
+    formData.append("threshold", "700"); // Standard threshold
+
+    const res = await fetch(`${API_URL}/verify-identity`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ data: fileText }),
+      body: formData,
+      // Note: Do NOT set Content-Type header when sending FormData; 
+      // the browser sets it automatically with the correct boundary.
     });
 
-    if (!res.ok) throw new Error("Backend error");
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.detail || "Backend verification failed");
+    }
 
-    return await res.json(); // { score: 7xx }
+    // Returns: { status, analysis: {score...}, proof_data: {proof, public_signals} }
+    return await res.json(); 
   } catch (err) {
-    console.error("Backend failed, using fallback", err);
-    return { score: 720 }; // DEMO SAFE fallback
+    console.error("API Error:", err);
+    throw err;
   }
 }

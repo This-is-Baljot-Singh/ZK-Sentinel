@@ -1,57 +1,87 @@
 "use client";
 
 import { useState } from "react";
-import { analyzeFinancialData } from "../lib/api";
+import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { verifyIdentity } from "../lib/api";
 
 export default function UploadPage() {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { address, isConnected } = useAccount();
+  const router = useRouter();
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!isConnected || !address) {
+      setError("Please connect your wallet first.");
+      return;
+    }
 
-    const reader = new FileReader();
+    setLoading(true);
+    setError(null);
 
-    reader.onload = async () => {
-      setLoading(true);
+    try {
+      // 1. Send to Backend
+      const result = await verifyIdentity(file, address);
+      
+      // 2. Store results for the Dashboard
+      // In production, use Context/Redux. For Hackathon, localStorage is fine.
+      localStorage.setItem("zk_analysis", JSON.stringify(result.analysis));
+      localStorage.setItem("zk_proof", JSON.stringify(result.proof_data));
 
-      const result = await analyzeFinancialData(reader.result);
-      localStorage.setItem("riskScore", result.score);
-
-      window.location.href = "/dashboard";
-    };
-
-    reader.readAsText(file);
+      // 3. Redirect
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err.message || "Upload failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-  <div className="bg-white p-6 sm:p-8 rounded-2xl shadow max-w-md w-full text-center">
+      <div className="bg-white p-6 sm:p-8 rounded-2xl shadow max-w-md w-full text-center">
+        <h1 className="text-2xl font-bold mb-2">Upload Financial Data</h1>
+        <p className="text-sm text-gray-500 mb-6">
+          Your data is analyzed locally. We generate a ZK Proof bound to your wallet.
+        </p>
 
-    <h1 className="text-2xl font-bold mb-2">
-      Upload Financial Data
-    </h1>
+        {!isConnected ? (
+          <div className="flex justify-center my-6">
+            <ConnectButton />
+          </div>
+        ) : (
+          <div className="mb-6">
+            <div className="bg-green-50 text-green-700 p-2 rounded text-xs mb-4">
+              Wallet Connected: {address.slice(0, 6)}...{address.slice(-4)}
+            </div>
+            
+            <input
+              type="file"
+              accept=".csv,.json,.txt"
+              className="w-full border rounded-lg p-3 text-sm cursor-pointer"
+              onChange={handleFileUpload}
+              disabled={loading}
+            />
+          </div>
+        )}
 
-    <p className="text-sm text-gray-500 mb-6">
-      Your data never leaves your device.
-      We only generate a cryptographic proof.
-    </p>
+        {loading && (
+          <div className="mt-4">
+            <p className="text-sm text-gray-600 animate-pulse">
+              🔐 Analyzing Data & Generating ZK Proof...
+            </p>
+            <p className="text-xs text-gray-400 mt-1">(This may take 10-20 seconds)</p>
+          </div>
+        )}
 
-    <input
-  type="file"
-  className="w-full border rounded-lg p-3 text-sm"
-  onChange={handleFileUpload}
-/>
-
-
-    {loading && (
-  <p className="mt-4 text-sm text-gray-600">
-    🔐 Analyzing securely…
-  </p>
-)}
-
-  </div>
-</div>
-
+        {error && (
+          <p className="mt-4 text-sm text-red-500">{error}</p>
+        )}
+      </div>
+    </div>
   );
 }
