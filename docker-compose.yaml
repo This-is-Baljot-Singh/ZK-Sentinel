@@ -1,0 +1,44 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: zksentinel_backend
+    restart: always
+    env_file: .env
+    expose:
+      - "8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./circuits:/app/circuits
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: zksentinel_frontend
+    restart: always
+    expose:
+      - "3000"
+    environment:
+      # This tells the frontend to use the browser's relative path for API calls
+      - NEXT_PUBLIC_API_URL=/tools
+
+  caddy:
+    image: caddy:alpine
+    container_name: zksentinel_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:

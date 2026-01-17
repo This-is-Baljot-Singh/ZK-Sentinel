@@ -1,0 +1,16 @@
+# Replace 'your-domain.com' with your actual domain or 'YOUR_VPS_IP.sslip.io'
+your-domain.com {
+    # Frontend (Next.js)
+    reverse_proxy /_next/* frontend:3000
+    reverse_proxy /favicon.ico frontend:3000
+    
+    # Backend API (FastAPI)
+    handle /tools/* {
+        reverse_proxy backend:8000
+    }
+    
+    # Default to Frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+}

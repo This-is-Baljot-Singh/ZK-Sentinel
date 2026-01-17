@@ -1,0 +1,17 @@
+services:
+  backend:
+    # CHANGE: Set context to root (.) and point to the Dockerfile
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: zksentinel_backend
+    ports:
+      - "8000:8000"
+    # Mount volumes for development (hot reloading)
+    volumes:
+      - ./backend:/app/backend
+      - ./circuits:/app/circuits
+    env_file:
+      - .env  # Ensure env vars are loaded
+    environment:
+      - ENV=development
